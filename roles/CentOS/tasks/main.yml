@@ -1,0 +1,339 @@
+# ------- ELASTICSEARCH -------
+
+- name: Downloading the source file of Elasticsearch
+  tags: es_ubuntu
+  get_url:
+    url: https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.4.3-x86_64.rpm
+    dest: /tmp/elasticsearch-8.4.3-x86_64.rpm
+
+- name: Installing Elasticsearch
+  tags: es_ubuntu
+  yum:
+    name: /tmp/elasticsearch-8.4.3-x86_64.rpm
+    state: present
+
+- name: Enabling Elasticsearch service
+  tags: es_ubuntu
+  service:
+    name: elasticsearch
+    enabled: yes
+
+- name: Modifying service file
+  tags: es_ubuntu
+  replace:
+    path: /usr/lib/systemd/system/elasticsearch.service
+    regexp: "TimeoutStartSec=75"
+    replace: "TimeoutStartSec=300"
+
+- name: Opening port for elastic search
+  tags: es_ubuntu
+  shell: | 
+    sudo firewall-cmd --permanent --zone=public --add-port=9200/tcp
+    sleep 10
+    sudo firewall-cmd --reload
+
+- name: Enabling elastic search service
+  tags: es_ubuntu
+  shell: |
+    systemctl enable elasticsearch.service
+    sleep 10
+    systemctl start elasticsearch.service
+  ignore_errors: yes
+
+
+# ------- LOGSTASH -------
+
+- name: Downloading and installing public signing key
+  tags: logstash_ubuntu
+  rpm_key:
+    state: present
+    key: https://artifacts.elastic.co/GPG-KEY-elasticsearch 
+
+- name: Creeating a repo file for Logstash
+  tags: logstash_ubuntu
+  copy:
+    src: logstash.repo
+    dest: /etc/yum.repos.d/logstash.repo
+    owner: root
+    group: root
+    mode: 0777
+
+- name: Updating repo
+  tags: logstash_ubuntu
+  dnf:
+    update_cache: yes
+    
+- name: Installing Logstash and its dependencies
+  tags: logstash_ubuntu
+  dnf:
+    name:
+      - logstash
+    state: latest
+
+- name: Opening port for Logstash
+  tags: logstash_ubuntul, elk_install
+  shell: | 
+    sudo firewall-cmd --permanent --zone=public --add-port=9600/tcp
+    sleep 10
+    sudo firewall-cmd --reload
+
+- name: Making sure that logstash is stared and enabled
+  tags: logstash_ubuntu, service, logstash_service, elk_service
+  service:
+    name: logstash
+    state: restarted
+    enabled: true
+
+
+# ------- KIBANA --------
+
+- name: Downloading and installing public signing key
+  tags: kibana_ubuntu, kibana_install, elk_install
+  rpm_key:
+    state: present
+    key: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+- name: Adding Kibana to the RPM repository
+  tags: kibana_ubuntu, kibana_install, elk_install
+  copy:
+    src: kibana.repo
+    dest: /etc/yum.repos.d/kibana.repo
+    owner: root
+    group: root
+    mode: 777
+
+- name: Updating the repository once again
+  tags: kibana_ubuntu, kibana_install, elk_install
+  yum:
+    name:
+      - kibana
+    state: latest
+
+- name: Opening port for Kibana
+  tags: kibana_ubuntu, kibana_installl, elk_install
+  firewalld:
+    port: 5601/tcp
+    zone: public
+    permanent: yes
+    state: enabled
+
+- name: Making sure that Kibana is started and enabled
+  tags: kibana_ubuntu, elk_service, kibana_service, service  
+  service:
+    name: kibana
+    state: restarted
+    enabled: true
+
+
+# ------- INFLUXDB -------
+
+- name: Copying the Influxdb repository file
+  unarchive:
+    src: https://dl.influxdata.com/influxdb/releases/influxdb2-2.4.0-linux-amd64.tar.gz 
+    dest: /tmp/
+    remote_src: yes
+    mode: 0777
+    owner: root
+    group: root
+
+- name: Adding the executables to the PATH
+  shell: 
+    cd /tmp/influxdb2*
+    sudo cp influxdb2-2.4.0-linux-amd64/influxd /usr/local/bin/
+
+
+# ------- GRAFANA -------
+
+- name: Downloading Grafana package
+  get_url:
+    url: https://dl.grafana.com/enterprise/release/grafana-enterprise-9.2.2-1.x86_64.rpm
+    dest: /tmp/grafana-enterprise-9.2.2-1.x86_64.rpm
+
+- name: Installing Grafana
+  yum:
+    name: /tmp/grafana-enterprise-9.2.2-1.x86_64.rpm
+
+- name: Enabling Grafana service
+  service:
+    name: grafana-server
+    enabled: yes
+
+- name: Modifying service file
+  tags: es_ubuntu
+  replace:
+    path: /usr/lib/systemd/system/grafana-server.service
+    regexp: "TimeoutStartSec=75"
+    replace: "TimeoutStartSec=500"
+
+- name: Making sure that Grafana service is started and enabled
+  service:
+    name: grafana-server
+    enabled: true
+    state: started
+  
+
+# -------- PROMETHEUS ---------
+
+- name: Creating a directory for Prometheus package
+  tags: directory
+  file:
+    path: ~/prometheus
+    state: directory
+  
+- name: Downloading and extracting Prometheus
+  tags: source
+  unarchive:
+    src: https://github.com/prometheus/prometheus/releases/download/v2.39.1/prometheus-2.39.1.linux-amd64.tar.gz
+    dest: ~/prometheus
+    remote_src: yes
+    mode: 0777
+    owner: root
+    group: root
+
+- name: Stopping the Prometheus service if exists
+  shell:
+    sudo systemctl stop prometheus >> /dev/null
+  ignore_errors: yes
+
+- name: Adding the Prometheus executables to a PATH
+  tags: executables
+  shell: | 
+    cd ~/prometheus/prometheus*
+    cp -r . /usr/local/bin/prometheus
+  ignore_errors: yes
+
+
+- name: Copying the Prometheus service file
+  tags: servicefile
+  copy:
+    src: prometheus.service
+    dest: /etc/systemd/system/
+    owner: root
+    group: root
+    mode: 777
+
+- name: Making sure that Prometheus service is started and enabled
+  service:
+    name: prometheus
+    state: restarted
+    enabled: true
+
+- name: Installing nagios dependecies and libraries
+  tags: dependecies, libraries
+  yum:
+    name:
+      - gcc 
+      - glibc 
+      - glibc-common 
+      - perl 
+      - httpd 
+      - php 
+      - wget 
+      - gd 
+      - gd-devel
+      - openssl-devel
+      - gcc
+      - glibc
+      - glibc-common 
+      - make
+      - gettext 
+      - automake
+      - autoconf
+      - wget
+      - openssl-devel
+      - net-snmp
+      - net-snmp-utils
+      - python2-pip
+    state: latest
+
+- name: Install passlib python package 
+  pip:
+    name: passlib
+
+- name: Creating a directory (where the downloaded files will be stored)
+  file:
+    path: ~/nagios
+    state: directory
+
+- name: Downloading and extracting Nagios
+  unarchive:
+    src: https://github.com/NagiosEnterprises/nagioscore/archive/nagios-4.4.6.tar.gz
+    dest: ~/nagios
+    remote_src: yes
+    mode: 0777
+    owner: root
+    group: root
+
+- name: Compiling, installing, and adding users and groups in nagios
+  shell: |
+    cd ~/nagios/nagioscore-**
+    ./configure
+    make all
+    make install-groups-users
+    usermod -a -G nagios apache
+    make install
+    make install-daemoninit
+    make install-commandmode
+    make install-config
+    make install-webconf
+- name: Downloading and extracting Nagios plugins
+  unarchive:
+    src: https://github.com/nagios-plugins/nagios-plugins/archive/release-2.3.3.tar.gz 
+    dest: ~/nagios
+    remote_src: yes
+    mode: 0777
+    owner: root
+    group: root
+
+- name: Compiling and installing plugins
+  shell: |
+    cd ~/nagios/nagios-plugins*
+    ./tools/setup
+    ./configure
+    make
+    make install
+- name: Add a user to a password file and ensure permissions are set
+  community.general.htpasswd:
+    path: /usr/local/nagios/etc/htpasswd.users 
+    name: adminnagios
+    password: server12345
+
+- name: Making sure that nagios is started and enabled
+  service:
+    name: nagios
+    state: restarted
+    enabled: true
+
+- name: Making sure that httpd is started and enabled
+  service:
+    name: httpd
+    state: restarted
+    enabled: true
+
+- name: Installing Lamp Stack dependencies
+  dnf:
+    name:
+      - httpd
+      - mariadb-server
+      - mariadb
+      - php
+      - php-mysql
+    state: latest
+
+- name: Opening needed ports for Lamp Stack
+  shell: |
+    sudo firewall-cmd --permanent --zone=public --add-service=http
+    sudo firewall-cmd --permanent --zone=public --add-service=https
+    sudo firewall-cmd --reload
+
+- name: Starting Apache service
+  service:
+    name: httpd
+    state: started
+    enabled: true
+
+- name: Starting Mariadb services
+  service:
+    name: mariadb
+    state: started
+    enabled: true

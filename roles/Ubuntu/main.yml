@@ -1,0 +1,85 @@
+---
+    - name: install prerequisites (Ubuntu)
+      apt:
+        name:
+          - default-jre
+          - apt-transport-https
+          - curl
+          - software-properties-common
+        state: present
+      become: yes
+
+    - name: add Elasticsearch APT repository key (Ubuntu)
+      apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+      become: yes
+
+    - name: add Elasticsearch APT repository (Ubuntu)
+      apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/7.x/apt stable main"
+        state: present
+      become: yes
+
+    - name: install Elasticsearch (Ubuntu)
+      apt:
+        name: elasticsearch
+        state: present
+      become: yes
+
+    - name: enable and start Elasticsearch service (Ubuntu)
+      systemd:
+        name: elasticsearch
+        enabled: yes
+        state: started
+      become: yes
+
+    - name: install Kibana (Ubuntu)
+      apt:
+        name: kibana
+        state: present
+      become: yes
+
+    - name: enable and start Kibana service (Ubuntu)
+      systemd:
+        name: kibana
+        enabled: yes
+        state: started
+      become: yes
+
+    - name: install Logstash (Ubuntu)
+      apt:
+        name: logstash
+        state: present
+      become: yes
+
+    - name: enable and start Logstash service (Ubuntu)
+      systemd:
+        name: logstash
+        enabled: yes
+        state: started
+      become: yes
+
+    - name: restart Elasticsearch and Kibana (Ubuntu)
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - elasticsearch
+        - kibana
+
+    - name: Install Prometheus (Ubuntu)
+      apt:
+        name: prometheus
+        state: latest
+
+    - name: Prometheus Start/Enable Check service
+      service:
+        name: prometheus
+        state: restarted
+        enabled: true
+
+    - name: Apache Start/Enable Check
+      service:
+        name: prometheus
+        state: restarted
+        enabled: true
